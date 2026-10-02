@@ -1,0 +1,82 @@
+{
+  "example": "profile_cache",
+  "questions": [
+    {
+      "id": "profile_cache-scope",
+      "lens": "data",
+      "stem": "Line 12 creates `cache` inside `get_profile`. What happens to `cache` between calls?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "It keeps every profile fetched so far, because a dict lasts until the program ends",
+          "why": "A dict object can outlive a call only if something outside still refers to it. Here nothing does.",
+          "origin": "misconception: local lifetime"
+        },
+        {
+          "letter": "B",
+          "text": "Every function in the file can use it, because it's a dict",
+          "why": "Being mutable doesn't make a variable global. Scope comes from where it's assigned.",
+          "origin": "misconception: mutable means global"
+        },
+        {
+          "letter": "C",
+          "text": "It keeps only the most recent profile",
+          "why": "Nothing is kept: the next call builds a brand-new empty dict on line 12.",
+          "origin": "misconception: partial persistence"
+        },
+        {
+          "letter": "D",
+          "text": "Each call makes a new, empty `cache`; nothing carries over",
+          "why": null,
+          "origin": "key"
+        }
+      ],
+      "answer": "D",
+      "explain": "`cache = {}` runs every time `get_profile` runs, and a local variable disappears when the call returns. To remember results between calls, the dict has to live outside the function.",
+      "evidence": {
+        "static": "`cache` is assigned on line 12, at the top level of `get_profile`, with no `global` or `nonlocal`"
+      }
+    },
+    {
+      "id": "profile_cache-claim",
+      "lens": "meta",
+      "stem": "Wren says: \"I added a cache, so repeated lookups skip the slow fetch.\" When `get_profile(7)` is called three times in a row, how many times does `fetch_profile` run?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "3 times",
+          "why": null,
+          "origin": "key"
+        },
+        {
+          "letter": "B",
+          "text": "1 time",
+          "why": "You'd get this if `cache = {}` sat at module level instead of inside `get_profile`: state that lasts between calls.",
+          "origin": "executed mutant"
+        },
+        {
+          "letter": "C",
+          "text": "6 times",
+          "why": "Reading `cache[user_id]` on line 15 only looks up the dict. It doesn't call `fetch_profile` again.",
+          "origin": "misconception: a lookup re-runs the function"
+        },
+        {
+          "letter": "D",
+          "text": "It raises KeyError",
+          "why": "You'd get this if line 13 read `user_id in cache` instead of `user_id not in cache`: an inverted test.",
+          "origin": "executed mutant"
+        }
+      ],
+      "answer": "A",
+      "explain": "Each call starts with an empty `cache`, so `user_id not in cache` is always True and every call fetches. The claim would be true only if the cache lived outside the function.",
+      "evidence": {
+        "key_from": "running the real code with a counter on fetch_profile",
+        "mutants": [
+          "line 13 read `user_id in cache` instead of `user_id not in cache`: It raises KeyError",
+          "line 14 ran without the check `if user_id not in cache:` on line 13: same result as the real code on this input, not a distractor",
+          "`cache = {}` sat at module level instead of inside `get_profile`: 1 time"
+        ]
+      }
+    }
+  ]
+}

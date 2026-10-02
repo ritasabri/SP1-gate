@@ -1,0 +1,88 @@
+{
+  "example": "fix_ticket",
+  "questions": [
+    {
+      "id": "fix_ticket-flow",
+      "lens": "security",
+      "stem": "Whoever writes the ticket controls `ticket_text`. Which statement about their text is true?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "It reaches line 17 as text that `shell=True` displays but doesn't run",
+          "why": "`shell=True` hands the whole string to the system shell, which runs it as a command.",
+          "origin": "misconception: shell=True"
+        },
+        {
+          "letter": "B",
+          "text": "It reaches the model, but the model's reply doesn't depend on it",
+          "why": "A model's reply depends on everything in its prompt, and the ticket is in the prompt.",
+          "origin": "misconception: model output is independent of its input"
+        },
+        {
+          "letter": "C",
+          "text": "It can't reach line 17, because `max_tokens=100` limits the reply",
+          "why": "`max_tokens` caps how long the reply is, not what it says. It doesn't cap the prompt either: a long ticket still costs more.",
+          "origin": "misconception: limits mistaken for controls"
+        },
+        {
+          "letter": "D",
+          "text": "It can shape the shell command that line 17 runs, via the reply",
+          "why": null,
+          "origin": "key"
+        }
+      ],
+      "answer": "D",
+      "explain": "Follow the value: `ticket_text` goes into `prompt` (line 10), the prompt goes to the model (line 11), the reply becomes `command` (line 16), and line 17 runs it with `shell=True`. Text that reaches a model's prompt can shape its reply (OWASP LLM01), and running a reply unchecked is improper output handling (OWASP LLM05).",
+      "evidence": {
+        "path": [
+          "line 8: `ticket_text` is a parameter the caller controls",
+          "line 10: prompt = f\"Reply with one shell command that fixes this issue:\\n{ticket_text}\"",
+          "line 11: reply = client.messages.create(",
+          "line 16: command = reply.content[0].text",
+          "line 17: subprocess.run(command, shell=True)"
+        ]
+      }
+    },
+    {
+      "id": "fix_ticket-fix",
+      "lens": "design",
+      "stem": "Which change stops the ticket text from writing the command that runs?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "Run only a preset command that the model picks by name",
+          "why": null,
+          "origin": "key"
+        },
+        {
+          "letter": "B",
+          "text": "Remove `;`, `&&` and `|` from the reply before running it",
+          "why": "One command can do harm on its own (for example `rm -rf ~`), and a blocklist misses `$( )`, backticks and more. The reply is still the command.",
+          "origin": "misconception; the analyzer still finds the path"
+        },
+        {
+          "letter": "C",
+          "text": "Print `command` before running it",
+          "why": "Printing records the command; the next line still runs it.",
+          "origin": "misconception; the analyzer still finds the path"
+        },
+        {
+          "letter": "D",
+          "text": "Add \"Never reply with a dangerous command.\" to the prompt",
+          "why": "An instruction in the prompt is not a security boundary: the ticket text sits in the same prompt and can argue with it (OWASP LLM01, prompt injection).",
+          "origin": "misconception; the analyzer still finds the path"
+        }
+      ],
+      "answer": "A",
+      "explain": "Only in the allowlist version does no path turn ticket text into command text: the command comes from a table of constants, so the ticket can at most pick which preset runs, or none.",
+      "evidence": {
+        "paths_found_per_option": {
+          "Add \"Never reply with a dangerous command.\" to the prompt": 1,
+          "Remove `;`, `&&` and `|` from the reply before running it": 1,
+          "Print `command` before running it": 1,
+          "Run only a preset command that the model picks by name": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "example": "first_repeat",
+  "questions": [
+    {
+      "id": "first_repeat-time",
+      "lens": "algo",
+      "stem": "`emails` holds n different addresses. How does the running time of `first_repeat` grow as n grows?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "Θ(n)",
+          "why": "One visible loop, but `in` on a list is a hidden loop over `seen`.",
+          "origin": "misconception: hidden loop"
+        },
+        {
+          "letter": "B",
+          "text": "Θ(n log n)",
+          "why": "`in` on a list doesn't search by halves; lists aren't kept sorted.",
+          "origin": "misconception: lists are searched like sorted arrays"
+        },
+        {
+          "letter": "C",
+          "text": "Θ(1)",
+          "why": "It returns early only when it finds a repeat. With n different addresses it never does, so it checks everything.",
+          "origin": "misconception: best case taken for worst case"
+        },
+        {
+          "letter": "D",
+          "text": "Θ(n²)",
+          "why": null,
+          "origin": "key"
+        }
+      ],
+      "answer": "D",
+      "explain": "The loop runs n times, and `e in seen` on line 5 checks the list `seen` item by item. `seen` grows by one each pass, so the checks add up to 0 + 1 + … + (n − 1) = n(n − 1)/2 comparisons: Θ(n²). (Θ is a tight bound: it grows in proportion to n², no faster and no slower.)",
+      "evidence": {
+        "static": [
+          "`e in seen` checks the list `seen` item by item",
+          "the loop on line 4 runs once per item of `emails`"
+        ],
+        "measured_exponent": 2.04,
+        "timings_s": {
+          "1000": 0.0035050139999839303,
+          "2000": 0.01206549400012591,
+          "4000": 0.04950842600010219,
+          "8000": 0.2453791589996399
+        }
+      }
+    },
+    {
+      "id": "first_repeat-set",
+      "lens": "design",
+      "stem": "A reviewer suggests changing line 3 to `seen = set()` and line 7 to `seen.add(e)`. What would change when `emails` is long?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "It gets faster, but it can return a different email, because sets have no order",
+          "why": "The order that matters here is the loop's order over `emails`, which doesn't change. `seen` is only asked yes/no questions.",
+          "origin": "misconception: set order leaks into the result"
+        },
+        {
+          "letter": "B",
+          "text": "Same results, and the running time becomes Θ(n) on average instead of Θ(n²)",
+          "why": null,
+          "origin": "key"
+        },
+        {
+          "letter": "C",
+          "text": "Nothing: `in` checks a set item by item, just like a list",
+          "why": "Sets are hash tables: `in` jumps to where the item would be instead of scanning.",
+          "origin": "misconception: all containers are scanned"
+        },
+        {
+          "letter": "D",
+          "text": "It gets slower, because hashing an email costs more than comparing two emails",
+          "why": "Hashing costs a little per lookup, but it replaces a scan of the whole list. Measured, the set version was faster at every size tried, from 1,000 to 8,000 emails.",
+          "origin": "misconception: constant cost mistaken for growth"
+        }
+      ],
+      "answer": "B",
+      "explain": "Checking membership in a set is a hash lookup, O(1) on average, so the loop does a constant amount of work per email. The function still returns the first repeat, because the loop order is unchanged. (\"On average\": many hash collisions could make lookups slower.)",
+      "evidence": {
+        "same_result_on_probe": true,
+        "random_inputs": {
+          "cases": 50,
+          "differ": 0
+        },
+        "static_variant": "Θ(n)",
+        "measured_exponent_variant": 1.07,
+        "timings_s_variant": {
+          "1000": 4.676200023823185e-05,
+          "2000": 0.000121052999929816,
+          "4000": 0.00022740799977327697,
+          "8000": 0.00045326599956752034
+        },
+        "set_version_faster_at_every_size": true
+      }
+    }
+  ]
+}

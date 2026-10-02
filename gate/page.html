@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SP1 Gate</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #111b2e; --panel2: #0e1626; --line: #22314e;
+    --text: #dbe4f5; --dim: #8294b5; --cobalt: #4f7cff; --cobalt2: #7ea0ff;
+    --good: #35c98e; --bad: #ff6b7a; --warn: #ffc857; --hl: #1b2a48; --focus: #2a3f6b;
+    --add: #12301f; --del: #3a1720;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+  header { padding: 12px 22px; border-bottom: 1px solid var(--line);
+           display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+  header .brand { color: var(--cobalt2); font-weight: 700; letter-spacing: .06em; }
+  header .status { color: var(--dim); font-size: 13px; flex: 1; }
+  header .score { color: var(--dim); font-size: 13px; }
+  header .score b { color: var(--text); }
+  .waiting { color: var(--warn); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(340px, 50%) 1fr; gap: 18px;
+         padding: 18px 22px 40px; max-width: 1320px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 14px 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+  .panel h2 { margin: 0; padding: 10px 14px; font-size: 12px; letter-spacing: .12em;
+              text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); font-weight: 600; }
+  .says { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .says .who { color: var(--warn); }
+  .meta { padding: 8px 14px; color: var(--dim); font-size: 13px; border-bottom: 1px solid var(--line); word-break: break-all; }
+  pre.cmd { margin: 0; padding: 14px; white-space: pre-wrap; word-break: break-word; background: var(--panel2);
+            border-radius: 0 0 10px 10px; font-size: 14px; color: #f1f5ff; }
+  .tabs { display: flex; gap: 6px; padding: 8px 10px 0; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  .tab { background: transparent; border: 1px solid var(--line); border-bottom: none; color: var(--dim);
+         padding: 5px 10px; border-radius: 6px 6px 0 0; cursor: pointer; font: inherit; font-size: 13px; }
+  .tab.on { color: var(--text); background: var(--panel2); }
+  .tab .new { color: var(--good); font-size: 11px; margin-left: 4px; }
+  pre.code { margin: 0; padding: 10px 0; overflow: auto; max-height: 70vh; background: var(--panel2);
+             border-radius: 0 0 10px 10px; font-size: 13px; }
+  pre.code div { padding: 0 10px 0 0; white-space: pre; }
+  pre.code div.chg { background: var(--hl); }
+  pre.code div.focus { background: var(--focus); outline: 1px solid var(--cobalt); }
+  pre.code .ln { display: inline-block; width: 44px; text-align: right; padding-right: 12px; color: #44557a; user-select: none; }
+  pre.code div.add { background: var(--add); }
+  pre.code div.del { background: var(--del); color: #e7b3bb; }
+  .qbody { padding: 14px; }
+  .chips { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .chip { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--cobalt2);
+          border: 1px solid var(--line); border-radius: 20px; padding: 2px 10px; }
+  .chip.where { text-transform: none; letter-spacing: 0; color: var(--dim); cursor: pointer; }
+  .stem { margin: 0 0 14px; font-weight: 600; }
+  button.opt { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 10px 12px;
+               border-radius: 8px; cursor: pointer; background: var(--panel2); border: 1px solid var(--line);
+               color: var(--text); font: inherit; }
+  button.opt:hover:not(:disabled) { border-color: var(--cobalt); }
+  button.opt:disabled { cursor: default; }
+  button.opt .letter { color: var(--cobalt2); font-weight: 700; margin-right: 8px; }
+  button.opt.wrong { border-color: var(--bad); color: var(--dim); text-decoration: line-through; }
+  button.opt.right { border-color: var(--good); }
+  .feedback { margin: 4px 0 10px; padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
+              border: 1px dashed var(--bad); }
+  .feedback.ok { border-color: var(--good); }
+  .feedback .tag { font-weight: 700; color: var(--bad); }
+  .feedback.ok .tag { color: var(--good); }
+  code { background: #1a2740; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--cobalt2); }
+  button.opt.wrong code { color: inherit; }
+  .next { margin-top: 12px; background: var(--cobalt); border: none; color: #fff; padding: 10px 16px;
+          border-radius: 8px; font: inherit; font-weight: 700; cursor: pointer; }
+  .progress { color: var(--dim); font-size: 13px; margin-bottom: 8px; }
+  .center { grid-column: 1 / -1; padding: 34px 26px; text-align: center; }
+  .center .big { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .center .big.ok { color: var(--good); }
+  .center p { color: var(--dim); max-width: 640px; margin: 10px auto; }
+  .center .next { margin-top: 16px; }
+  .history { max-width: 640px; margin: 22px auto 0; text-align: left; font-size: 13px; }
+  .history div { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); color: var(--dim); }
+  .history .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block;
+         margin-right: 8px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">SP1 GATE</span>
+  <span class="status" id="status">connecting…</span>
+  <span class="waiting" id="waiting"></span>
+  <span class="score" id="score"></span>
+</header>
+<main id="main"></main>
+<script>
+const TOKEN = new URLSearchParams(location.search).get("t");
+let STATE = null, CUR = null, QI = 0, SOLVED = new Set(), TAB = 0, DONE = null, LOST = false, HLEN = -1;
+let HOLD = null;   // id of a finished item whose last explanation is still on screen
+
+async function api(path, body) {
+  try {
+    const r = await fetch(path + "?t=" + encodeURIComponent(TOKEN), body ? {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+    if (!r.ok) return null;
+    LOST = false;
+    return await r.json();
+  } catch (e) { LOST = true; return null; }
+}
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function md(s) { return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>"); }
+
+function header() {
+  const s = STATE;
+  document.getElementById("status").innerHTML = LOST
+    ? "Lost contact with SP1 Gate. Is it still running?"
+    : (s && s.current ? (s.current.kind === "action"
+        ? "Your agent is waiting for you in project <b>" + esc(s.current.project) + "</b>"
+        : "Questions about the code your agent just wrote in <b>" + esc(s.current.project) + "</b>")
+      : '<span class="dot"></span>Watching your coding agent');
+  document.getElementById("waiting").textContent = s && s.waiting ? "+" + s.waiting + " more waiting" : "";
+  document.getElementById("score").innerHTML = s && s.score.total
+    ? "first try: <b>" + s.score.right + " / " + s.score.total + "</b>" : "";
+}
+
+function poll() {
+  api("/api/state").then(s => {
+    if (!s) { header(); return; }
+    STATE = s;
+    const c = s.current;
+    if (HOLD && !(c && c.id !== HOLD)) { header(); return; }   // let the person read the last explanation
+    HOLD = null;
+    if (!c) {
+      const hl = (s.history || []).length;
+      if (CUR !== null || !document.getElementById("main").firstChild || hl !== HLEN) { CUR = null; HLEN = hl; idle(); }
+    } else if (c.id !== CUR) {
+      CUR = c.id; DONE = null; SOLVED = new Set(c.solved); QI = 0; TAB = 0;
+      while (QI < c.questions.length && SOLVED.has(c.questions[QI].id)) QI++;
+      render();
+    }
+    header();
+  });
+}
+
+function idle() {
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  const box = el("div", "panel center");
+  if (DONE) {
+    box.appendChild(el("div", "big ok", DONE.title));
+    box.appendChild(el("p", "", DONE.text));
+    const b = el("button", "next", "OK");
+    b.onclick = () => { DONE = null; idle(); };
+    box.appendChild(b);
+  } else {
+    box.appendChild(el("div", "big", "SP1 Gate is on"));
+    box.appendChild(el("p", "", "Keep this tab open. Questions appear here when your agent is about to run " +
+      "something risky, and after it finishes writing code. Your next message to the agent waits until you answer."));
+  }
+  const h = (STATE && STATE.history) || [];
+  if (h.length) {
+    const list = el("div", "history");
+    h.forEach(x => {
+      const row = el("div");
+      row.appendChild(el("span", "", x.when));
+      row.appendChild(el("span", "t", md(x.kind === "action" ? "run/edit: `" + x.title + "`" : "code: " + x.title)));
+      row.appendChild(el("span", "", x.status === "abandoned" ? "agent stopped waiting" : x.right + "/" + x.total + " first try"));
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+  main.appendChild(box);
+}
+
+function codeView(text, changed, focusLine) {
+  const pre = el("pre", "code");
+  const chg = new Set(changed || []);
+  let focusEl = null;
+  text.split("\n").forEach((line, i) => {
+    const n = i + 1;
+    if (n === text.split("\n").length && line === "") return;
+    const row = el("div", (chg.has(n) ? "chg" : "") + (n === focusLine ? " focus" : ""));
+    row.appendChild(el("span", "ln", String(n)));
+    row.appendChild(document.createTextNode(line));
+    pre.appendChild(row);
+    if (n === focusLine) focusEl = row;
+  });
+  if (focusEl) setTimeout(() => focusEl.scrollIntoView({block: "center", behavior: "smooth"}), 30);
+  return pre;
+}
+
+function leftPanel(c) {
+  const p = el("div", "panel");
+  const v = c.view;
+  if (c.kind === "action") {
+    if (v.tool === "Bash") {
+      p.appendChild(el("h2", "", "Your agent wants to run"));
+      if (v.description) p.appendChild(el("div", "says", '<span class="who">agent:</span> ' + esc(v.description)));
+      p.appendChild(el("div", "meta", "in " + esc(v.cwd)));
+      p.appendChild(el("pre", "cmd", esc(v.command)));
+    } else {
+      p.appendChild(el("h2", "", "Your agent wants to change a file"));
+      p.appendChild(el("div", "meta", esc(v.file)));
+      const pre = el("pre", "code");
+      if (v.old !== undefined) {
+        v.old.split("\n").forEach(l => { const r = el("div", "del"); r.appendChild(el("span", "ln", "−")); r.appendChild(document.createTextNode(l)); pre.appendChild(r); });
+      }
+      (v.new || "").split("\n").forEach(l => { const r = el("div", "add"); r.appendChild(el("span", "ln", "+")); r.appendChild(document.createTextNode(l)); pre.appendChild(r); });
+      p.appendChild(pre);
+    }
+    return p;
+  }
+  p.appendChild(el("h2", "", "What your agent just wrote"));
+  const files = v.files;
+  const q = c.questions[Math.min(QI, c.questions.length - 1)];
+  const want = q && q.evidence && q.evidence.file;
+  if (want) { const k = files.findIndex(f => f.rel === want); if (k >= 0) TAB = k; }
+  const tabs = el("div", "tabs");
+  files.forEach((f, k) => {
+    const t = el("button", "tab" + (k === TAB ? " on" : ""), esc(f.rel) + (f.created ? '<span class="new">new</span>' : ""));
+    t.onclick = () => { TAB = k; render(); };
+    tabs.appendChild(t);
+  });
+  p.appendChild(tabs);
+  const f = files[TAB];
+  const focus = q && q.evidence && q.evidence.file === f.rel ? q.evidence.line : null;
+  p.appendChild(codeView(f.text, f.changed, focus));
+  return p;
+}
+
+function render() {
+  const c = STATE.current;
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  main.appendChild(leftPanel(c));
+  const right = el("div", "panel");
+  right.appendChild(el("h2", "", c.kind === "action" ? "Before you press 1" : "Before your next message"));
+  const body = el("div", "qbody");
+  right.appendChild(body);
+  main.appendChild(right);
+  const q = c.questions[QI];
+  body.appendChild(el("div", "progress", "Question " + (QI + 1) + " of " + c.questions.length));
+  const chips = el("div", "chips");
+  chips.appendChild(el("span", "chip", esc(q.lens)));
+  if (c.kind === "turn" && q.evidence && q.evidence.file) {
+    const w = el("span", "chip where", esc(q.evidence.file) + (q.evidence.line > 1 ? " · line " + q.evidence.line : ""));
+    chips.appendChild(w);
+  }
+  body.appendChild(chips);
+  body.appendChild(el("p", "stem", md(q.stem)));
+  q.options.forEach(o => {
+    const b = el("button", "opt", '<span class="letter">' + o.letter + "</span>" + md(o.text));
+    b.dataset.letter = o.letter;
+    b.onclick = () => answer(c, q, o.letter, b, body);
+    body.appendChild(b);
+  });
+}
+
+async function answer(c, q, letter, btn, body) {
+  if (btn.disabled) return;
+  const res = await api("/api/answer", {item: c.id, qid: q.id, letter: letter});
+  if (!res) return;
+  if (res.error) { poll(); return; }
+  if (res.correct) {
+    SOLVED.add(q.id);
+    btn.classList.add("right");
+    body.querySelectorAll("button.opt").forEach(b => b.disabled = true);
+    body.appendChild(el("div", "feedback ok", '<span class="tag">Correct.</span> ' + md(res.explain)));
+    const last = res.done;
+    if (last) HOLD = c.id;
+    const next = el("button", "next", last ? "Finish" : "Next question");
+    next.onclick = () => {
+      if (last) {
+        HOLD = null;
+        DONE = c.kind === "action"
+          ? {title: "Unlocked",
+             text: STATE.after_answers === "ask"
+               ? "Go back to your agent and press 1 to let it run. If something looked wrong, choose No and tell it what to change."
+               : "Your agent is carrying on now."}
+          : {title: "Done", text: "You can type your next message to your agent now."};
+        CUR = "(finished)"; idle(); poll();
+      } else {
+        QI += 1; while (QI < c.questions.length && SOLVED.has(c.questions[QI].id)) QI++;
+        render();
+      }
+    };
+    body.appendChild(next);
+    next.focus();
+  } else {
+    btn.disabled = true;
+    btn.classList.add("wrong");
+    btn.insertAdjacentElement("afterend", el("div", "feedback", '<span class="tag">Not quite.</span> ' + md(res.why)));
+  }
+}
+
+document.addEventListener("keydown", ev => {
+  const L = ev.key.toUpperCase();
+  if ("ABCD".includes(L) && L.length === 1) {
+    const b = document.querySelector('button.opt[data-letter="' + L + '"]');
+    if (b && !b.disabled) b.click();
+  }
+});
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

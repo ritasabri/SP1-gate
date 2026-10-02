@@ -1,0 +1,88 @@
+{
+  "example": "find_index",
+  "questions": [
+    {
+      "id": "find_index-trace",
+      "lens": "algo",
+      "stem": "What does `find_index([3, 8, 15, 21, 42], 42)` return?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "`4`",
+          "why": null,
+          "origin": "key"
+        },
+        {
+          "letter": "B",
+          "text": "`2`",
+          "why": "You'd get this if line 7 ran without the check `if nums[mid] == target:` on line 6: a missing check.",
+          "origin": "executed mutant"
+        },
+        {
+          "letter": "C",
+          "text": "Nothing: the loop never ends",
+          "why": "You'd get this if line 9 used `mid` instead of `mid + 1`: an off-by-one bug.",
+          "origin": "executed mutant"
+        },
+        {
+          "letter": "D",
+          "text": "`-1`",
+          "why": "You'd get this if line 4 read `lo < hi` instead of `lo <= hi`: a boundary (off-by-one) bug.",
+          "origin": "executed mutant"
+        }
+      ],
+      "answer": "A",
+      "explain": "Trace it: lo=0, hi=4 → mid=2 (15 < 42, so lo=3) → mid=3 (21 < 42, so lo=4) → mid=4, and nums[4] is 42, so it returns 4. The loop needs `<=` so it still runs when lo and hi meet.",
+      "evidence": {
+        "key_from": "running the real code",
+        "mutants": [
+          "line 4 read `lo < hi` instead of `lo <= hi`: `-1`",
+          "line 8 read `nums[mid] <= target` instead of `nums[mid] < target`: same result as the real code on this input, not a distractor",
+          "line 3 used `len(nums)` instead of `len(nums) - 1`: same result as the real code on this input, not a distractor",
+          "line 9 used `mid` instead of `mid + 1`: Nothing: the loop never ends",
+          "line 11 used `mid` instead of `mid - 1`: same result as the real code on this input, not a distractor",
+          "line 7 ran without the check `if nums[mid] == target:` on line 6: `2`"
+        ]
+      }
+    },
+    {
+      "id": "find_index-time",
+      "lens": "algo",
+      "stem": "In the worst case, how does the running time of `find_index` grow with the length n of `nums`?",
+      "options": [
+        {
+          "letter": "A",
+          "text": "Θ(n)",
+          "why": "The loop doesn't visit every element; each pass throws away half of what's left.",
+          "origin": "misconception: every loop is linear"
+        },
+        {
+          "letter": "B",
+          "text": "Θ(n log n)",
+          "why": "Θ(n log n) is the cost of sorting. This function assumes `nums` is already sorted.",
+          "origin": "misconception: search confused with sort"
+        },
+        {
+          "letter": "C",
+          "text": "Θ(1)",
+          "why": "It can stop on the first comparison, but that's the best case. The worst case keeps halving.",
+          "origin": "misconception: best case taken for worst case"
+        },
+        {
+          "letter": "D",
+          "text": "Θ(log n)",
+          "why": null,
+          "origin": "key"
+        }
+      ],
+      "answer": "D",
+      "explain": "Each pass either returns or moves lo above mid or hi below it, so the range still in play at least halves. A range of n can halve only about log₂ n times before it's empty.",
+      "evidence": {
+        "static": [
+          "each pass through the loop on line 4 halves the range it searches"
+        ],
+        "measured": "not measured: at these sizes timing can't separate log n from a constant, so the rule is the evidence"
+      }
+    }
+  ]
+}

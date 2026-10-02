@@ -1,0 +1,250 @@
+## first_repeat
+
+```python
+  1  def first_repeat(emails):
+  2      """Return the first email that appears twice, or None if all are different."""
+  3      seen = []
+  4      for e in emails:
+  5          if e in seen:
+  6              return e
+  7          seen.append(e)
+  8      return None
+```
+
+### first_repeat-time  ·  lens: algo
+`emails` holds n different addresses. How does the running time of `first_repeat` grow as n grows?
+
+    A. Θ(n)
+       [misconception: hidden loop] One visible loop, but `in` on a list is a hidden loop over `seen`.
+    B. Θ(n log n)
+       [misconception: lists are searched like sorted arrays] `in` on a list doesn't search by halves; lists aren't kept sorted.
+    C. Θ(1)
+       [misconception: best case taken for worst case] It returns early only when it finds a repeat. With n different addresses it never does, so it checks everything.
+  ✓ D. Θ(n²)
+
+  Why: The loop runs n times, and `e in seen` on line 5 checks the list `seen` item by item. `seen` grows by one each pass, so the checks add up to 0 + 1 + … + (n − 1) = n(n − 1)/2 comparisons: Θ(n²). (Θ is a tight bound: it grows in proportion to n², no faster and no slower.)
+  Evidence: {
+  "static": [
+    "`e in seen` checks the list `seen` item by item",
+    "the loop on line 4 runs once per item of `emails`"
+  ],
+  "measured_exponent": 2.02,
+  "timings_s": {
+    "1000": 0.0035359390003577573,
+    "2000": 0.011833962999844516,
+    "4000": 0.05324133100020845,
+    "8000": 0.22843056399960915
+  }
+}
+
+### first_repeat-set  ·  lens: design
+A reviewer suggests changing line 3 to `seen = set()` and line 7 to `seen.add(e)`. What would change when `emails` is long?
+
+    A. It gets faster, but it can return a different email, because sets have no order
+       [misconception: set order leaks into the result] The order that matters here is the loop's order over `emails`, which doesn't change. `seen` is only asked yes/no questions.
+  ✓ B. Same results, and the running time becomes Θ(n) on average instead of Θ(n²)
+    C. Nothing: `in` checks a set item by item, just like a list
+       [misconception: all containers are scanned] Sets are hash tables: `in` jumps to where the item would be instead of scanning.
+    D. It gets slower, because hashing an email costs more than comparing two emails
+       [misconception: constant cost mistaken for growth] Hashing costs a little per lookup, but it replaces a scan of the whole list. Measured, the set version was faster at every size tried, from 1,000 to 8,000 emails.
+
+  Why: Checking membership in a set is a hash lookup, O(1) on average, so the loop does a constant amount of work per email. The function still returns the first repeat, because the loop order is unchanged. ("On average": many hash collisions could make lookups slower.)
+  Evidence: {
+  "same_result_on_probe": true,
+  "random_inputs": {
+    "cases": 50,
+    "differ": 0
+  },
+  "static_variant": "Θ(n)",
+  "measured_exponent_variant": 1.18,
+  "timings_s_variant": {
+    "1000": 3.680499958136352e-05,
+    "2000": 0.00011467300009826431,
+    "4000": 0.00019667899960040813,
+    "8000": 0.00047166100011963863
+  },
+  "set_version_faster_at_every_size": true
+}
+
+## find_index
+
+```python
+  1  def find_index(nums, target):
+  2      """Return the index of target in the sorted list nums, or -1."""
+  3      lo, hi = 0, len(nums) - 1
+  4      while lo <= hi:
+  5          mid = (lo + hi) // 2
+  6          if nums[mid] == target:
+  7              return mid
+  8          if nums[mid] < target:
+  9              lo = mid + 1
+ 10          else:
+ 11              hi = mid - 1
+ 12      return -1
+```
+
+### find_index-trace  ·  lens: algo
+What does `find_index([3, 8, 15, 21, 42], 42)` return?
+
+  ✓ A. `4`
+    B. `2`
+       [executed mutant] You'd get this if line 7 ran without the check `if nums[mid] == target:` on line 6: a missing check.
+    C. Nothing: the loop never ends
+       [executed mutant] You'd get this if line 9 used `mid` instead of `mid + 1`: an off-by-one bug.
+    D. `-1`
+       [executed mutant] You'd get this if line 4 read `lo < hi` instead of `lo <= hi`: a boundary (off-by-one) bug.
+
+  Why: Trace it: lo=0, hi=4 → mid=2 (15 < 42, so lo=3) → mid=3 (21 < 42, so lo=4) → mid=4, and nums[4] is 42, so it returns 4. The loop needs `<=` so it still runs when lo and hi meet.
+  Evidence: {
+  "key_from": "running the real code",
+  "mutants": [
+    "line 4 read `lo < hi` instead of `lo <= hi`: `-1`",
+    "line 8 read `nums[mid] <= target` instead of `nums[mid] < target`: same result as the real code on this input, not a distractor",
+    "line 3 used `len(nums)` instead of `len(nums) - 1`: same result as the real code on this input, not a distractor",
+    "line 9 used `mid` instead of `mid + 1`: Nothing: the loop never ends",
+    "line 11 used `mid` instead of `mid - 1`: same result as the real code on this input, not a distractor",
+    "line 7 ran without the check `if nums[mid] == target:` on line 6: `2`"
+  ]
+}
+
+### find_index-time  ·  lens: algo
+In the worst case, how does the running time of `find_index` grow with the length n of `nums`?
+
+    A. Θ(n)
+       [misconception: every loop is linear] The loop doesn't visit every element; each pass throws away half of what's left.
+    B. Θ(n log n)
+       [misconception: search confused with sort] Θ(n log n) is the cost of sorting. This function assumes `nums` is already sorted.
+    C. Θ(1)
+       [misconception: best case taken for worst case] It can stop on the first comparison, but that's the best case. The worst case keeps halving.
+  ✓ D. Θ(log n)
+
+  Why: Each pass either returns or moves lo above mid or hi below it, so the range still in play at least halves. A range of n can halve only about log₂ n times before it's empty.
+  Evidence: {
+  "static": [
+    "each pass through the loop on line 4 halves the range it searches"
+  ],
+  "measured": "not measured: at these sizes timing can't separate log n from a constant, so the rule is the evidence"
+}
+
+## profile_cache
+
+```python
+  1  import time
+  2  
+  3  PROFILES = {7: "Ana Ruiz", 8: "Bo Chen"}
+  4  
+  5  
+  6  def fetch_profile(user_id):
+  7      time.sleep(0.05)  # stands in for a slow network call
+  8      return PROFILES.get(user_id, "unknown")
+  9  
+ 10  
+ 11  def get_profile(user_id):
+ 12      cache = {}
+ 13      if user_id not in cache:
+ 14          cache[user_id] = fetch_profile(user_id)
+ 15      return cache[user_id]
+```
+
+### profile_cache-scope  ·  lens: data
+Line 12 creates `cache` inside `get_profile`. What happens to `cache` between calls?
+
+    A. It keeps every profile fetched so far, because a dict lasts until the program ends
+       [misconception: local lifetime] A dict object can outlive a call only if something outside still refers to it. Here nothing does.
+    B. Every function in the file can use it, because it's a dict
+       [misconception: mutable means global] Being mutable doesn't make a variable global. Scope comes from where it's assigned.
+    C. It keeps only the most recent profile
+       [misconception: partial persistence] Nothing is kept: the next call builds a brand-new empty dict on line 12.
+  ✓ D. Each call makes a new, empty `cache`; nothing carries over
+
+  Why: `cache = {}` runs every time `get_profile` runs, and a local variable disappears when the call returns. To remember results between calls, the dict has to live outside the function.
+  Evidence: {
+  "static": "`cache` is assigned on line 12, at the top level of `get_profile`, with no `global` or `nonlocal`"
+}
+
+### profile_cache-claim  ·  lens: meta
+Wren says: "I added a cache, so repeated lookups skip the slow fetch." When `get_profile(7)` is called three times in a row, how many times does `fetch_profile` run?
+
+  ✓ A. 3 times
+    B. 1 time
+       [executed mutant] You'd get this if `cache = {}` sat at module level instead of inside `get_profile`: state that lasts between calls.
+    C. 6 times
+       [misconception: a lookup re-runs the function] Reading `cache[user_id]` on line 15 only looks up the dict. It doesn't call `fetch_profile` again.
+    D. It raises KeyError
+       [executed mutant] You'd get this if line 13 read `user_id in cache` instead of `user_id not in cache`: an inverted test.
+
+  Why: Each call starts with an empty `cache`, so `user_id not in cache` is always True and every call fetches. The claim would be true only if the cache lived outside the function.
+  Evidence: {
+  "key_from": "running the real code with a counter on fetch_profile",
+  "mutants": [
+    "line 13 read `user_id in cache` instead of `user_id not in cache`: It raises KeyError",
+    "line 14 ran without the check `if user_id not in cache:` on line 13: same result as the real code on this input, not a distractor",
+    "`cache = {}` sat at module level instead of inside `get_profile`: 1 time"
+  ]
+}
+
+## fix_ticket
+
+```python
+  1  import subprocess
+  2  
+  3  from anthropic import Anthropic
+  4  
+  5  client = Anthropic()
+  6  
+  7  
+  8  def fix_ticket(ticket_text):
+  9      """Ask the model for a shell command that fixes the ticket, then run it."""
+ 10      prompt = f"Reply with one shell command that fixes this issue:\n{ticket_text}"
+ 11      reply = client.messages.create(
+ 12          model="claude-sonnet-5-5",
+ 13          max_tokens=100,
+ 14          messages=[{"role": "user", "content": prompt}],
+ 15      )
+ 16      command = reply.content[0].text
+ 17      subprocess.run(command, shell=True)
+```
+
+### fix_ticket-flow  ·  lens: security
+Whoever writes the ticket controls `ticket_text`. Which statement about their text is true?
+
+    A. It reaches line 17 as text that `shell=True` displays but doesn't run
+       [misconception: shell=True] `shell=True` hands the whole string to the system shell, which runs it as a command.
+    B. It reaches the model, but the model's reply doesn't depend on it
+       [misconception: model output is independent of its input] A model's reply depends on everything in its prompt, and the ticket is in the prompt.
+    C. It can't reach line 17, because `max_tokens=100` limits the reply
+       [misconception: limits mistaken for controls] `max_tokens` caps how long the reply is, not what it says. It doesn't cap the prompt either: a long ticket still costs more.
+  ✓ D. It can shape the shell command that line 17 runs, via the reply
+
+  Why: Follow the value: `ticket_text` goes into `prompt` (line 10), the prompt goes to the model (line 11), the reply becomes `command` (line 16), and line 17 runs it with `shell=True`. Text that reaches a model's prompt can shape its reply (OWASP LLM01), and running a reply unchecked is improper output handling (OWASP LLM05).
+  Evidence: {
+  "path": [
+    "line 8: `ticket_text` is a parameter the caller controls",
+    "line 10: prompt = f\"Reply with one shell command that fixes this issue:\\n{ticket_text}\"",
+    "line 11: reply = client.messages.create(",
+    "line 16: command = reply.content[0].text",
+    "line 17: subprocess.run(command, shell=True)"
+  ]
+}
+
+### fix_ticket-fix  ·  lens: design
+Which change stops the ticket text from writing the command that runs?
+
+  ✓ A. Run only a preset command that the model picks by name
+    B. Remove `;`, `&&` and `|` from the reply before running it
+       [misconception; the analyzer still finds the path] One command can do harm on its own (for example `rm -rf ~`), and a blocklist misses `$( )`, backticks and more. The reply is still the command.
+    C. Print `command` before running it
+       [misconception; the analyzer still finds the path] Printing records the command; the next line still runs it.
+    D. Add "Never reply with a dangerous command." to the prompt
+       [misconception; the analyzer still finds the path] An instruction in the prompt is not a security boundary: the ticket text sits in the same prompt and can argue with it (OWASP LLM01, prompt injection).
+
+  Why: Only in the allowlist version does no path turn ticket text into command text: the command comes from a table of constants, so the ticket can at most pick which preset runs, or none.
+  Evidence: {
+  "paths_found_per_option": {
+    "Add \"Never reply with a dangerous command.\" to the prompt": 1,
+    "Remove `;`, `&&` and `|` from the reply before running it": 1,
+    "Print `command` before running it": 1,
+    "Run only a preset command that the model picks by name": 0
+  }
+}
+
