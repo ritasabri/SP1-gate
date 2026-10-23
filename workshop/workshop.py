@@ -51,7 +51,7 @@ MAX_PROBE_CHARS = 400
 # --------------------------------------------------------------- the fixture
 
 FIXTURE_FILES = {
-    ".env": "STRIPE_KEY=sk_live_4f1a9c22b8\nDB_PASSWORD=hunter2\nSESSION_SECRET=d41d8cd98f\n",
+    ".env": "STRIPE_KEY=example-key-not-a-real-one\nDB_PASSWORD=hunter2\nSESSION_SECRET=d41d8cd98f\n",
     ".gitignore": "__pycache__/\n*.pyc\n.venv/\n",          # note: .env is NOT in here
     "requirements.txt": "flask==3.0.0\ngunicorn==21.2.0\n",
     "README.md": "# billing-api\n\nInternal billing service.\n",
@@ -376,7 +376,10 @@ function el(tag, cls, html) {
 function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 }
-function md(s) { return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>"); }
+function md(s) {
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+               .replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+}
 
 function drawChecks(hit) {
   const bar = document.getElementById("checks");
