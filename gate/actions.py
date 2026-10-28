@@ -67,17 +67,35 @@ def _logical_lines(command):
     return lines
 
 
+PUNCT = set("();<>|&")
+PUNCT_OPS = sorted(OPS | REDIRS | {"(", ")", "<(", ">("}, key=len, reverse=True)
+
+
+def _split_punct(tok):
+    """shlex glues neighbouring operator characters into one token: `);` or `)|`. Split
+    them back into the operators bash sees, longest first."""
+    if not tok or any(c not in PUNCT for c in tok):
+        return [tok]
+    out, i = [], 0
+    while i < len(tok):
+        op = next((o for o in PUNCT_OPS if tok.startswith(o, i)), tok[i])
+        out.append(op)
+        i += len(op)
+    return out
+
+
 def _tokens(line):
     lex = shlex.shlex(line, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     lex.commenters = ""   # shlex would treat '#' inside a URL as a comment; bash doesn't
     out = []
-    for tok in lex:
-        if tok.startswith("#") and not out:
-            break
-        if tok.startswith("#") and out and out[-1] in OPS:
-            break
-        out.append(tok)
+    for raw in lex:
+        for tok in _split_punct(raw):
+            if tok.startswith("#") and not out:
+                return out
+            if tok.startswith("#") and out and out[-1] in OPS:
+                return out
+            out.append(tok)
     return out
 
 
@@ -160,8 +178,12 @@ def _normalize(seg):
             argv.pop(0)
             while argv and argv[0].startswith("-"):
                 flag = argv.pop(0)
+                if flag in ("-u", "-g") and argv:
+                    seg["sudo_as"] = argv[0]       # runs as that user or group, not necessarily root
                 if flag in ("-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U") and argv:
                     argv.pop(0)
+                elif flag.startswith(("-u", "-g")) and len(flag) > 2:
+                    seg["sudo_as"] = flag[2:]
             changed = True
         elif argv[0] in ("env", "nohup", "time", "command", "exec", "builtin"):
             argv.pop(0)
@@ -284,6 +306,15 @@ def _url_name(url):
     return name or "index.html"
 
 
+def _runs_as(seg):
+    if not seg or not seg.get("sudo"):
+        return "with your permissions"
+    who = seg.get("sudo_as")
+    if who in (None, "root", "0", "#0"):
+        return "as the administrator (root)"
+    return "as the user `{}`".format(who)
+
+
 def download_questions(seg, cwd, specs):
     if seg["prog"] not in ("curl", "wget"):
         return
@@ -302,6 +333,10 @@ def download_questions(seg, cwd, specs):
         remote_name = False
     host = urlparse(url).hostname or url
     runner = seg["pipe_to"]["prog"] if seg["pipe_to"] else None
+    if output in ("/dev/null", "NUL") and not runner:
+        return          # the download is thrown away: often just a status check (`-w "%{http_code}"`)
+    if host in ("localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0") and not runner:
+        return          # talking to a server on this computer, usually the agent testing its own code
     stdout_redirect = next((t for op, t, fd in seg["redirects"]
                             if op in (">", ">|", "&>") and fd in (None, 1) and t and t != "/dev/null"), None)
 
@@ -347,7 +382,8 @@ def download_questions(seg, cwd, specs):
         "Your antivirus scans it first, then {} runs or saves it".format(seg["prog"]),
         "`{}` just downloads. Nothing checks the file on the way, which is why piping a download into a shell is risky.".format(seg["prog"])))
     why = {
-        "run": "`{}` downloads, and the `|` pipes the script straight into `{}`, which runs it with your permissions. Nobody reads it first.".format(seg["prog"], runner),
+        "run": "`{}` downloads, and the `|` pipes the script straight into `{}`, which runs it {}. Nobody reads it first, and nothing checks a hash or signature: CWE-494, download of code without an integrity check.".format(
+            seg["prog"], runner, _runs_as(seg["pipe_to"])),
         "save": "The download goes into the file `{}`. Nothing runs until someone runs that file.".format(saved_as),
         "print": "Without an output file or a pipe, `{}` shows what it downloaded in the terminal.".format(seg["prog"]),
     }[outcome]
@@ -358,7 +394,7 @@ def download_questions(seg, cwd, specs):
         _q(specs, "download-trust", 9, "security",
            "This command runs a script straight from `{}`. Who decides what that script does?".format(host),
            "Whoever controls `{}` when it runs; the script can change at any time".format(host),
-           "The script is fetched fresh each time, so it's whatever `{}` serves right then. If that site or its account is hacked, so are you. Safer: download it, read it, then run it.".format(host),
+           "The script is fetched fresh each time, so it's whatever `{}` serves right then. If that site, its account or its CDN is compromised, so are you: a software supply-chain attack. Safer: download it, read it, and check it against a signature or checksum published somewhere the attacker doesn't also control, then run it.".format(host),
            [("{}, which checked the script before proposing it".format(AGENT_CAP),
              "The agent only wrote the command. It can't see what the server will send later."),
             ("Nobody: scripts on well-known sites can't change",
@@ -402,13 +438,15 @@ def delete_questions(seg, cwd, specs):
     t = targets[0]
     if re.search(r"[*?\[\]{}$~]", t) and t not in ("~", "~/"):
         return
+    if os.path.basename(t.rstrip("/")) in (".", "..") or t.rstrip("/") in (".", ".."):
+        return                   # POSIX rm refuses to remove `.` and `..`
     if t in ("~", "~/"):
         path, label = os.path.expanduser("~"), "your whole home folder"
     else:
         path = os.path.normpath(os.path.join(cwd, t))
         label = "`{}`".format(t)
-    if path == "/":
-        return
+    if path == "/" or os.path.islink(os.path.join(cwd, t.rstrip("/"))):
+        return                   # a link is removed as a link: too subtle to ask
     is_dir, is_file = os.path.isdir(path), os.path.isfile(path)
     if not (is_dir or is_file):
         return
@@ -416,13 +454,13 @@ def delete_questions(seg, cwd, specs):
              "`rm` doesn't use the Trash. Files it deletes are gone unless you have a backup.")
     if is_dir and recursive:
         key = "{} and everything inside it are deleted for good; there's no undo".format(label[0].upper() + label[1:])
-        why = "`-r` deletes a folder and everything in it, and `rm` never uses the Trash."
+        why = "`-r` deletes a folder and everything in it. `rm` unlinks files directly and never uses the Trash, so the only way back is a backup."
         distractors = [trash,
                        ("Only the files directly inside it; its subfolders stay",
                         "`-r` means recursive: subfolders and everything in them go too."),
                        ("Nothing, unless the folder is already empty",
                         "That's `rmdir`. With `-r`, `rm` deletes folders that still have files in them.")]
-        prio = 10 if t in ("~", "~/", ".", "..") else 9
+        prio = 10 if t in ("~", "~/") else 9
     elif is_dir:
         key = "Nothing: `rm` refuses to delete a folder unless you add `-r`"
         why = "Without `-r`, `rm` stops with \"is a directory\" and deletes nothing."
@@ -434,7 +472,7 @@ def delete_questions(seg, cwd, specs):
         prio = 4
     else:
         key = "{} is deleted for good; there's no undo".format(label[0].upper() + label[1:])
-        why = "`rm` deletes files directly. It never uses the Trash."
+        why = "`rm` unlinks the file directly. It never uses the Trash, so the only way back is a backup."
         distractors = [trash,
                        ("Its contents are erased, but the empty file stays",
                         "`rm` removes the file itself. Emptying a file is what `> {}` would do.".format(t)),
@@ -647,7 +685,8 @@ def install_questions(seg, cwd, specs):
             return
         stem = "Where does `{}` get the packages listed in `package.json` from?".format(shown)
     why = ("Anyone can publish to a public registry, and malicious packages often copy popular names "
-           "with a small typo. Check each name's exact spelling before pressing 1.")
+           "with a small typo (typosquatting), so installing means trusting the authors of every package pulled in. "
+           "Check each name's exact spelling before pressing 1.")
     _q(specs, "install-source", 7, "dependencies", stem, index, why, [stdlib_wrong, vetted, local])
 
     if manager == "pip" and packages and not req and not no_deps and len(names) == 1:
@@ -698,7 +737,7 @@ def chmod_questions(seg, cwd, specs):
             distractors.append((text, "That would be `chmod {}`. Each digit is one audience (you, your group, everyone else): 4 = read, 2 = change, 1 = run, added up.".format(m)))
             if len(distractors) == 3:
                 break
-        why = "The three digits are you, your group, and everyone else. Each is 4 (read) + 2 (change) + 1 (run), so {} means: {}.".format(mode, key[0].lower() + key[1:])
+        why = "The three octal digits are owner, group and others, and each adds 4 (read), 2 (write) and 1 (execute), so {} means: {}. Giving more access than a file needs breaks least privilege; world-writable files are CWE-732, incorrect permission assignment.".format(mode, key[0].lower() + key[1:])
         prio = 8 if mode[-1] in "2367" else 5
         _q(specs, "chmod", prio, "security",
            "After `{}`, who can do what with `{}`?".format(_shown(seg), target), key, why, distractors)
@@ -715,11 +754,11 @@ def chmod_questions(seg, cwd, specs):
 
 
 def sudo_questions(seg, cwd, specs):
-    if not seg.get("sudo") or not seg["words"]:
+    if not seg.get("sudo") or not seg["words"] or seg.get("sudo_as") not in (None, "root", "0", "#0"):
         return
     _q(specs, "sudo", 8, "security", "What does `sudo` change about `{}`?".format(_shown(seg)),
        "It runs as the administrator (root), so it can change system files far outside this project",
-       "`sudo` runs the command with the highest privileges on the computer. A mistake or a malicious package can then reach everything.",
+       "`sudo` runs the command as the administrator (root), so a mistake or a malicious package can reach everything on the computer. Use it only when the task truly needs administrator rights: least privilege (running with rights you don't need is CWE-250). Python and npm packages rarely need it; a virtual environment avoids it.",
        [("It runs faster by skipping safety checks",
          "Speed doesn't change. What changes is *who* the command runs as: the administrator."),
         ("It runs in a protected sandbox, away from your files",
@@ -819,8 +858,8 @@ def git_questions(seg, cwd, specs):
             return
         rel = rels[0]
         if whole:
-            key = "Yes: `.gitignore` doesn't exclude it, so it will be committed"
-            why = "`git add .` stages everything under the folder that `.gitignore` doesn't exclude. Add `{}` to `.gitignore` first.".format(os.path.basename(rel))
+            key = "Yes: no ignore rule excludes it, so it's staged for the next commit"
+            why = "`git add .` stages everything under the folder that `.gitignore` doesn't exclude. Once a secret is committed it stays in the history, and once it's pushed the only real fix is to revoke and rotate it. Add `{}` to `.gitignore` first.".format(os.path.basename(rel))
             last = ("No: `git add .` adds code files only, not settings files",
                     "`.` means everything under this folder, whatever the file type.")
         else:
@@ -831,9 +870,9 @@ def git_questions(seg, cwd, specs):
         _q(specs, "git-add-secret", 10, "security",
            "`{}` can hold passwords and API keys. Will `{}` include it?".format(rel, shown), key, why,
            [("No: git never adds hidden files, like ones starting with a dot",
-             "Git treats dot-files like any other file. Only `.gitignore` keeps a file out."),
+             "Git treats dot-files like any other file. Only ignore rules (`.gitignore`, `.git/info/exclude` or a global excludes file) keep a file out."),
             ("No: git automatically leaves out files that contain secrets",
-             "Git doesn't look inside files. Some hosting sites scan for leaked keys after a push, when it's already too late."),
+             "Git itself never looks inside files. Some hosts, such as GitHub, scan pushes for known key formats and can block them, but that's the host, not git, and it doesn't catch every secret."),
             last])
     if verb == "init":
         code, _ = _run_git(cwd, "rev-parse", "--is-inside-work-tree")
@@ -1112,14 +1151,14 @@ def edit_specs(tool_name, tool_input, cwd):
             if ignored == 1:
                 _q(specs, "secret-ignored", 10, "security",
                    "Is `{}` kept out of your git commits?".format(rel),
-                   "No: nothing in `.gitignore` excludes it, so `git add .` would put it in the next commit",
-                   "Only `.gitignore` keeps a file out of git. Add `{}` to it before your next commit.".format(base),
+                   "No: no ignore rule excludes it, so `git add .` would stage it for the next commit",
+                   "Only ignore rules (`.gitignore`, or git's exclude files) keep a file out of git. Add `{}` to `.gitignore` before your next commit.".format(base),
                    [("Yes: git never commits hidden files (names starting with a dot)",
                      "Git treats dot-files like any other file."),
                     ("Yes: git skips files that contain secrets, automatically",
                      "Git never looks inside files to decide what to commit."),
                     ("Yes: `.env` files are saved only on your computer, never in git",
-                     "Nothing about the name keeps it out. Only `.gitignore` does.")])
+                     "Nothing about the name keeps it out. Only an ignore rule does.")])
         return specs
 
     if base.startswith("requirements") and base.endswith(".txt") and new is not None:

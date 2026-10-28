@@ -71,9 +71,14 @@ class Gate:
 
     def _log(self, item, qid, correct):
         q = next(q for q in item["questions"] if q["id"] == qid)
+        family = q.get("evidence", {}).get("family")
+        if not family:                       # ids look like "t-rt-membership-0" or "a-download-trust"
+            parts = qid.split("-")[1:]
+            if parts and parts[-1].isdigit():
+                parts = parts[:-1]
+            family = "-".join(parts) or qid
         record = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "kind": item["kind"], "project": item["project"],
-                  "question": qid.split("-")[1] if "-" in qid else qid, "lens": q["lens"],
-                  "first_try_correct": correct}
+                  "question": family, "lens": q["lens"], "first_try_correct": correct}
         try:
             with open(os.path.join(sp1_home(), "history.jsonl"), "a") as f:
                 f.write(json.dumps(record) + "\n")

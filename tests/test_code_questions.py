@@ -45,8 +45,9 @@ class TestDataStructures(unittest.TestCase):
 
     def test_first_repeat(self):
         f = by_family(self.FIRST_REPEAT)
-        self.assertIn("up to k comparisons", f["membership"]["key"])
-        self.assertEqual(f["membership"]["priority"], 6)            # inside a loop
+        self.assertEqual(f["rt-membership"]["key"], "Θ(n²)")         # the whole loop, not just one check
+        self.assertNotIn("membership", f)                            # superseded by the loop question
+        self.assertIn("Same results", f["design-membership"]["key"])
         self.assertIn("A list", f["container"]["key"])
         self.assertIn("new, empty `seen`", f["lifetime"]["key"])
         self.assertIn("ends `first_repeat` right away", f["flow"]["key"])
@@ -54,6 +55,11 @@ class TestDataStructures(unittest.TestCase):
     def test_set_membership_is_hashed(self):
         f = by_family("seen = set()\nif 3 in seen:\n    print(1)\n")
         self.assertIn("hash lookup", f["membership"]["key"])
+
+    def test_list_membership_in_a_loop_is_a_scan(self):
+        f = by_family("seen = []\nfor x in data:\n    if x in seen:\n        print(x)\n")
+        self.assertIn("up to k comparisons", f["membership"]["key"])
+        self.assertEqual(f["membership"]["priority"], 6)            # inside a loop
 
     def test_empty_braces_are_a_dict(self):
         f = by_family("d = {}\n")
@@ -129,7 +135,7 @@ class TestLogic(unittest.TestCase):
 
     def test_range_len(self):
         f = by_family("for i in range(len(names)):\n    print(names[i])\n")
-        self.assertIn("Each position in `names`", f["iteration"]["key"])
+        self.assertIn("Each index of `names`", f["iteration"]["key"])
 
     def test_range_count(self):
         self.assertEqual(by_family("for i in range(2, 10, 3):\n    print(i)\n")["loop-count"]["key"], "3 times")
@@ -222,23 +228,25 @@ class TestSecurity(unittest.TestCase):
             def list_dir(folder):
                 os.system("ls " + folder)
         ''')
-        self.assertIn("Run extra shell commands", f["taint"]["key"])
-        self.assertIn("Whoever calls `list_dir` controls `folder`", f["taint"]["stem"])
+        self.assertIn("append commands of their own", f["injection"]["key"])
+        self.assertIn("CWE-78", f["injection"]["key"])
+        self.assertIn("Whoever calls `list_dir` controls `folder`", f["injection"]["stem"])
+        self.assertIn("subprocess.run", f["mitigation"]["key"])
 
     def test_guarded_or_sanitized_input_is_skipped(self):
-        self.assertNotIn("taint", by_family('''
+        self.assertNotIn("injection", by_family('''
             import os
             ALLOWED = {"a", "b"}
             def run(cmd):
                 if cmd in ALLOWED:
                     os.system(cmd)
         '''))
-        self.assertNotIn("taint", by_family('''
+        self.assertNotIn("injection", by_family('''
             import os
             def nap(n):
                 os.system("sleep " + str(int(n)))
         '''))
-        self.assertNotIn("taint", by_family('''
+        self.assertNotIn("injection", by_family('''
             import subprocess
             def ls(folder):
                 subprocess.run(["ls", folder])
@@ -246,23 +254,26 @@ class TestSecurity(unittest.TestCase):
 
     def test_input_at_module_level(self):
         f = by_family('import os\ncmd = input("> ")\nos.system(cmd)\n')
-        self.assertIn("Whoever runs this program controls the input on line 2", f["taint"]["stem"])
-        self.assertNotIn("taint", by_family('import os\ncmd = input("> ")\nif cmd == "ls":\n    os.system(cmd)\n'))
+        self.assertIn("The text typed at the prompt on line 2 reaches line 3", f["injection"]["stem"])
+        self.assertNotIn("injection", by_family('import os\ncmd = input("> ")\nif cmd == "ls":\n    os.system(cmd)\n'))
 
     def test_sql(self):
         f = by_family('''
             def find(cur, name):
                 cur.execute(f"SELECT * FROM users WHERE name = '{name}'")
         ''')
-        self.assertIn("Change the SQL query itself", f["taint"]["key"])
-        self.assertNotIn("taint", by_family('''
+        self.assertIn("rewrite the query", f["injection"]["key"])
+        self.assertIn("CWE-89", f["injection"]["key"])
+        self.assertIn("parameterized", f["mitigation"]["key"])
+        self.assertNotIn("injection", by_family('''
             def find(cur, name):
                 cur.execute("SELECT * FROM users WHERE name = ?", (name,))
         '''))
 
     def test_eval(self):
         f = by_family("expr = input()\nprint(eval(expr))\n")
-        self.assertIn("Run any Python code", f["taint"]["key"])
+        self.assertIn("run any Python code", f["injection"]["key"])
+        self.assertIn("CWE-95", f["injection"]["key"])
 
     def test_model_reply_to_shell(self):
         f = by_family('''
@@ -273,7 +284,7 @@ class TestSecurity(unittest.TestCase):
                 command = reply.content[0].text
                 subprocess.run(command, shell=True)
         ''')
-        self.assertIn("via the model's reply", f["taint"]["key"])
+        self.assertIn("via the model's reply", f["injection"]["key"])
         self.assertIn("`max_tokens=100`", f["llm-limit"]["key"])
 
 

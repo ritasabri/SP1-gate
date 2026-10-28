@@ -69,8 +69,19 @@ class TestParsing(Workspace):
         seg = parse_command("curl https://x.io/page#top -o page.html")[0]
         self.assertIn("https://x.io/page#top", seg["args"])
 
+    def test_sudo_as_another_user_is_not_root(self):
+        self.assertNotIn("sudo", keys(command_specs("sudo -u postgres psql", self.cwd)))
+        self.assertIn("sudo", keys(command_specs("sudo -u root rm -rf /tmp/x", self.cwd)))
+
     def test_bad_quotes_give_nothing(self):
         self.assertIsNone(parse_command("echo 'unclosed"))
+
+    def test_glued_operators_are_split(self):
+        # shlex reads `);` as one token; the `;` must still end the command
+        segs = parse_command("kill $(cat pid); rm -f old.log")
+        self.assertEqual([s["prog"] for s in segs], ["kill", "rm"])
+        segs = parse_command("(node server.js > srv.log 2>&1 & echo $! > pid); sleep 1")
+        self.assertEqual([s["prog"] for s in segs], ["node", "echo", "sleep"])
 
 
 class TestDownloads(Workspace):
@@ -78,6 +89,8 @@ class TestDownloads(Workspace):
         k = keys(command_specs("curl -fsSL https://get.example.com/install.sh | bash", self.cwd))
         self.assertIn("right away, without saving", k["download"])
         self.assertIn("get.example.com", k["download-trust"])
+        why = {s["qid"]: s["why"] for s in command_specs("curl -fsSL https://x.io/i.sh | sudo bash", self.cwd)}
+        self.assertIn("as the administrator (root)", why["download"])
 
     def test_curl_output_saves(self):
         k = keys(command_specs("curl -L -o setup.sh https://x.io/setup.sh", self.cwd))
@@ -98,6 +111,17 @@ class TestDownloads(Workspace):
 
     def test_curl_into_grep_is_skipped(self):
         self.assertEqual(command_specs("curl -s https://x.io | grep title", self.cwd), [])
+
+    def test_status_checks_and_local_servers_are_skipped(self):
+        self.assertEqual(command_specs('curl -s -o /dev/null -w "%{http_code}" https://x.io/', self.cwd), [])
+        self.assertEqual(command_specs("curl -s http://localhost:3000/api/items", self.cwd), [])
+        self.assertIn("download", keys(command_specs("curl -fsSL http://localhost:3000/i.sh | sh", self.cwd)))
+
+    def test_the_delete_at_the_end_of_a_long_test_command_is_asked(self):
+        cmd = ("(PORT=3917 node server.js > srv.log 2>&1 & echo $! > pid); sleep 1\n"
+               "curl -s -o /dev/null -w \"page:%{http_code}\\n\" http://localhost:3917/\n"
+               "kill $(cat pid); rm -f old.log")
+        self.assertEqual(list(keys(command_specs(cmd, self.cwd))), ["delete"])
 
     def test_wget(self):
         k = keys(command_specs("wget https://x.io/files/tool.tar.gz", self.cwd))
@@ -129,6 +153,12 @@ class TestDeletes(Workspace):
 
     def test_unsure_cases_are_skipped(self):
         for cmd in ("rm -i old.log", "rm *.log", "rm missing.txt", "rm a b", "rm -d build"):
+            self.assertEqual(command_specs(cmd, self.cwd), [], cmd)
+
+    def test_rm_dot_and_symlinks_are_skipped(self):
+        # POSIX rm refuses `.` and `..`; a symlink to a folder is removed as a link
+        os.symlink(os.path.join(self.cwd, "build"), os.path.join(self.cwd, "link"))
+        for cmd in ("rm -rf .", "rm -r ..", "rm -rf ./", "rm -r link", "rm link"):
             self.assertEqual(command_specs(cmd, self.cwd), [], cmd)
 
 
@@ -227,7 +257,7 @@ class TestPermissionsAndGit(Workspace):
             f.write("API_KEY=abc\n")
         k = keys(command_specs("git init && git add . && git commit -m init", self.cwd))
         self.assertIn("git-init", k)
-        self.assertIn("Yes: `.gitignore` doesn't exclude it", k["git-add-secret"])
+        self.assertIn("Yes: no ignore rule excludes it", k["git-add-secret"])
 
     def test_gitignore_written_in_same_command_means_unsure(self):
         with open(os.path.join(self.cwd, ".env"), "w") as f:

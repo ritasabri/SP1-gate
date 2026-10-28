@@ -7,8 +7,10 @@ questions at two moments:
    permissions, pushes, or edits a secrets or settings file, you answer 1–2 questions
    about what that action will do. Then Claude Code asks you to press 1, as usual.
 2. **After Claude writes code.** When Claude finishes its turn, 1–3 questions about the code
-   it just wrote appear, covering data structures, running time, logic, files and
-   security. Your next message to Claude waits until you've answered them.
+   it just wrote appear, written like exam questions: security weaknesses named by their CWE
+   entry, file access, data structures, running time in Θ notation, and design choices
+   ("what does a set buy here, compared with a list?"). Your next message to Claude waits
+   until you've answered them.
 
 The questions open in a page in your browser. Answers are computed from the code, not
 written by an AI, and nothing leaves your computer. No API key is needed: SP1 Gate uses
@@ -48,9 +50,14 @@ the folder, then install again.
 
 | Path | What it is |
 |---|---|
-| `gate/` | The live gate: `hook.py` (Claude Code hooks), `daemon.py` (local server), `page.html` (the page), `actions.py` (questions before actions), `code_questions.py` and `taint.py` (questions about code) |
+| `gate/` | The live gate: `hook.py` (Claude Code hooks), `daemon.py` (local server), `page.html` (the page), `actions.py` (questions before actions) |
+| `gate/code_questions.py` | Picks the questions about code, and the data-structure, scope and logic families |
+| `gate/complexity.py` | Running time (Θ) and design-choice questions |
+| `gate/security.py` | Security questions tied to CWE entries; `taint.py` traces where input goes |
+| `gate/files.py` | File-access questions: open modes, `with`, permissions, races, temporary files |
+| `gate/pyfacts.py` | Shared facts about Python code that every family uses |
 | `practice/` | A scratch project to try it in |
-| `tests/` | 93 tests (`python3 -m unittest discover -s tests`) |
+| `tests/` | 162 tests (`python3 -m unittest discover -s tests`) |
 | `docs/` | The design (`DESIGN.md`) and how questions are made (`QUESTION_ENGINE.md`) |
 | `poc/` | The earlier proof of concept, and `try_it.py`, a demo that needs no agent |
 
@@ -59,7 +66,8 @@ the folder, then install again.
 Tested:
 - The whole flow with real Claude Code 2.1.286 sessions (run without a person at the keyboard). A `git init`, a new `.env` file, and a `git add` that included `.env` were each held until their questions were answered. After Claude wrote code, the questions opened, the next message was blocked, and it went through once the questions were answered.
 - The page in Chromium.
-- All tests pass on Python 3.9 and 3.11.
+- All tests pass on Python 3.9, 3.11 and 3.13.
+- The question bank was audited by a separate reviewer who tried to break each family with about 250 programs, then attacked the data-flow rules with 313 more (helpers called from `main()`, pathlib, argparse, existence checks). Every case where a key would have been wrong was fixed or turned into "no question", and each one is a test in `tests/test_academic.py`.
 
 Not yet seen by a person: the "press 1" prompt that Claude Code shows after you answer. That's the documented behavior of the hook's `ask` answer, but no one has watched it happen yet. If it misbehaves, run `python3 gate/sp1.py set after_answers allow`.
 
